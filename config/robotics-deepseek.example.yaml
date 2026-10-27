@@ -56,4 +56,4 @@ executor:
   reranker: local
   max_paper_num: 10
   send_empty: false
-  debug: ${oc.env:DEBUG,false}
+  debug: ${oc.decode:${oc.env:DEBUG,false}}
