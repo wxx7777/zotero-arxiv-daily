@@ -6,12 +6,17 @@ import tiktoken
 from openai import OpenAI
 from loguru import logger
 import json
+from omegaconf import OmegaConf
 RawPaperItem = TypeVar('RawPaperItem')
 
 
 def _request_llm(openai_client: OpenAI, llm_params: dict, messages: list[dict]) -> str:
     api_mode = llm_params.get("api_mode", "chat_completion")
-    generation_kwargs = dict(llm_params.get("generation_kwargs", {}))
+    raw_kwargs = llm_params.get("generation_kwargs", {})
+    generation_kwargs = (
+        OmegaConf.to_container(raw_kwargs, resolve=True)
+        if OmegaConf.is_config(raw_kwargs) else dict(raw_kwargs)
+    )
 
     if api_mode == "chat_completion":
         response = openai_client.chat.completions.create(
@@ -48,6 +53,12 @@ class Paper:
     tldr: Optional[str] = None
     affiliations: Optional[list[str]] = None
     score: Optional[float] = None
+    embedding_score: Optional[float] = None
+    topic_relevance: Optional[float] = None
+    matched_topics: Optional[list[str]] = None
+    real_robot: Optional[bool] = None
+    real_robot_evidence: Optional[str] = None
+    recommendation_reason: Optional[str] = None
 
     def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict) -> str:
         lang = llm_params.get('language', 'English')

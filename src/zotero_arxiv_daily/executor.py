@@ -11,6 +11,7 @@ from .construct_email import render_email
 from .utils import send_email
 from openai import OpenAI
 from tqdm import tqdm
+from .topic_filter import filter_papers
 
 
 def normalize_path_patterns(patterns: list[str] | ListConfig | None, config_key: str) -> list[str] | None:
@@ -110,9 +111,18 @@ class Executor:
         if len(all_papers) > 0:
             logger.info("Reranking papers...")
             reranked_papers = self.reranker.rerank(all_papers, corpus)
+            screening = self.config.get("screening", {})
+            if screening.get("enabled", False):
+                reranked_papers = filter_papers(
+                    reranked_papers, self.openai_client, self.config.llm, screening
+                )
             reranked_papers = reranked_papers[:self.config.executor.max_paper_num]
+            if not reranked_papers and not self.config.executor.send_empty:
+                logger.info("No papers matched your research scope. No email will be sent.")
+                return
             logger.info("Generating TLDR and affiliations...")
             for p in tqdm(reranked_papers):
+                self.retrievers[p.source].enrich_paper(p)
                 p.generate_tldr(self.openai_client, self.config.llm)
                 p.generate_affiliations(self.openai_client, self.config.llm)
         elif not self.config.executor.send_empty:

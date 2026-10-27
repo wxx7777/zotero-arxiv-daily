@@ -1,0 +1,59 @@
+zotero:
+  user_id: ${oc.env:ZOTERO_ID}
+  api_key: ${oc.env:ZOTERO_KEY}
+  include_path:
+    - "触觉灵巧操作"
+    - "触觉灵巧操作/气动手真机RL"
+
+email:
+  sender: ${oc.env:SENDER}
+  receiver: ${oc.env:RECEIVER}
+  sender_password: ${oc.env:SENDER_PASSWORD}
+  smtp_server: smtp.163.com
+  smtp_port: 465
+
+source:
+  arxiv:
+    category: ["cs.RO", "cs.LG", "cs.CV", "cs.AI"]
+    include_cross_list: true
+
+llm:
+  api:
+    key: ${oc.env:OPENAI_API_KEY}
+    base_url: ${oc.env:OPENAI_API_BASE}
+  api_mode: chat_completion
+  generation_kwargs:
+    model: deepseek-flash
+    max_tokens: 4096
+    extra_body:
+      thinking:
+        type: disabled
+  language: Chinese
+
+screening:
+  enabled: true
+  candidate_limit: 0
+  batch_size: 8
+  min_relevance: 3
+  prefer_real_robot: true
+  profile: |
+    纳入以下任一方向，不要求同时满足所有方向：
+    机器人；强化学习；机器人VLA（视觉-语言-动作模型）；
+    世界模型；WAM（World Action Model，世界动作模型）；
+    灵巧手；触觉感知与反馈；灵巧操作。
+    强化学习包含有通用价值、可迁移到机器人控制的算法研究。
+    VLA、世界模型、WAM应与具身交互、动作生成或机器人控制有关。
+    优先有明确真机实验的相关论文，但保留相关的仿真和方法研究。
+    排除：仅做文本生成/语言理解/语言模型对齐，且没有机器人控制
+    或通用强化学习算法贡献的纯语言模型论文。
+    排除：以自动驾驶、道路车辆规划、驾驶场景预测为主要目标的论文。
+    不要仅因为机器人论文使用语言模型、提及驾驶作为背景而排除它。
+    仅在摘要明确报告实际机器人硬件实验时标记真机；计划上真机、
+    sim-to-real目标、真实数据集和真实视频本身均不等于做了真机实验。
+
+executor:
+  source: ["arxiv"]
+  reranker: local
+  max_paper_num: 10
+  send_empty: false
+  debug: ${oc.env:DEBUG,false}

@@ -21,6 +21,10 @@ class BaseRetriever(ABC):
     def convert_to_paper(self, raw_paper:RawPaperItem) -> Paper | None:
         pass
 
+    def enrich_paper(self, paper: Paper) -> None:
+        """Optionally load full text after the final shortlist is selected."""
+        return None
+
     def retrieve_papers(self) -> list[Paper]:
         raw_papers = self._retrieve_raw_papers()
         logger.info("Processing papers...")
@@ -33,7 +37,8 @@ class BaseRetriever(ABC):
                 continue
             if paper is not None:
                 papers.append(paper)
-            sleep(1)
+            if not getattr(self, "defer_full_text", False):
+                sleep(1)
         return papers
 
 registered_retrievers = {}

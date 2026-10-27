@@ -1,5 +1,6 @@
 from .protocol import Paper
 import math
+from html import escape
 
 
 framework = """
@@ -125,7 +126,20 @@ def render_email(papers:list[Paper]) -> str:
                 affiliations += ', ...'
         else:
             affiliations = 'Unknown Affiliation'
-        parts.append(get_block_html(p.title, authors, rate, p.tldr, p.pdf_url, affiliations))
+        tldr = p.tldr or ""
+        if p.recommendation_reason:
+            status = {True: "摘要明确报告真机实验", False: "摘要明确仅报告仿真",
+                      None: "摘要未明确，待核实"}[p.real_robot]
+            details = [
+                "<strong>研究方向：</strong>" + escape("、".join(p.matched_topics or [])),
+                "<strong>主题相关性：</strong>" + str(p.topic_relevance) + "/5",
+                "<strong>真机实验：</strong>" + status,
+                "<strong>推荐理由：</strong>" + escape(p.recommendation_reason),
+            ]
+            if p.real_robot_evidence:
+                details.append("<strong>摘要证据：</strong>" + escape(p.real_robot_evidence))
+            tldr += "<br><br>" + "<br>".join(details)
+        parts.append(get_block_html(p.title, authors, rate, tldr, p.pdf_url, affiliations))
 
     content = '<br>' + '</br><br>'.join(parts) + '</br>'
     return framework.replace('__CONTENT__', content)

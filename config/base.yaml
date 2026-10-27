@@ -46,6 +46,13 @@ reranker:
     model: null # The model name of the embedding model. Example: text-embedding-3-large
     batch_size: null # The batch size for embedding API requests. Adjust to match your provider's limit. Example: 64
 
+screening:
+  enabled: false
+  candidate_limit: 120 # Embedding top-N to review; 0 means all candidates.
+  batch_size: 8
+  min_relevance: 3 # Topic relevance from 0 to 5; low matches are not padded in.
+  prefer_real_robot: true # Within the same topic relevance tier.
+
 executor:
   debug: false # Whether to use debug mode. Example: true
   send_empty: false # Whether to send an empty email even if no new papers today. Example: true
