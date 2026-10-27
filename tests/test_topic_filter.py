@@ -5,7 +5,7 @@ import pytest
 from omegaconf import OmegaConf
 
 from zotero_arxiv_daily.protocol import Paper
-from zotero_arxiv_daily.topic_filter import filter_papers
+from zotero_arxiv_daily.topic_filter import filter_papers, shortlist_for_embedding
 
 
 def paper(title, abstract="We evaluated on a physical robotic hand.", score=7):
@@ -145,3 +145,33 @@ def test_email_contains_escaped_reason_and_hardware_evidence():
     assert "摘要明确报告真机实验" in html
     assert "&lt;script&gt;" in html
     assert "<script>" not in html
+
+
+def test_whole_boundary_tier_is_kept_for_similarity_tie_breaks():
+    papers = [paper("high one"), paper("high two"), paper("lower")]
+    papers[0].topic_relevance, papers[0].real_robot = 5, True
+    papers[1].topic_relevance, papers[1].real_robot = 5, True
+    papers[2].topic_relevance, papers[2].real_robot = 5, False
+    finalists = shortlist_for_embedding(papers, 1)
+    assert {p.title for p in finalists} == {"high one", "high two"}
+    assert shortlist_for_embedding(papers, 0) == []
+
+
+def test_parallel_batches_preserve_the_screening_decisions():
+    class DynamicClient:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+        def create(self, messages, **kwargs):
+            inputs = json.loads(messages[1]["content"])
+            decisions = [
+                decision(x["id"], excluded=x["title"].startswith("exclude"))
+                for x in inputs
+            ]
+            return SimpleNamespace(choices=[SimpleNamespace(
+                finish_reason="stop",
+                message=SimpleNamespace(content=json.dumps({"papers": decisions})),
+            )])
+    papers = [paper("keep one"), paper("exclude one"), paper("keep two"),
+              paper("exclude two"), paper("keep three")]
+    selected = run(papers, DynamicClient(), candidate_limit=0, batch_size=2, workers=2)
+    assert [p.title for p in selected] == ["keep one", "keep two", "keep three"]

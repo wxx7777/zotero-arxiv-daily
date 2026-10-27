@@ -34,6 +34,7 @@ screening:
   enabled: true
   candidate_limit: 0
   batch_size: 8
+  workers: 2
   min_relevance: 3
   prefer_real_robot: true
   profile: |
@@ -50,6 +51,11 @@ screening:
     不要仅因为机器人论文使用语言模型、提及驾驶作为背景而排除它。
     仅在摘要明确报告实际机器人硬件实验时标记真机；计划上真机、
     sim-to-real目标、真实数据集和真实视频本身均不等于做了真机实验。
+
+reranker:
+  local:
+    encode_kwargs:
+      batch_size: 4
 
 executor:
   source: ["arxiv"]

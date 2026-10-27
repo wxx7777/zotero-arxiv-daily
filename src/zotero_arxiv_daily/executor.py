@@ -11,7 +11,7 @@ from .construct_email import render_email
 from .utils import send_email
 from openai import OpenAI
 from tqdm import tqdm
-from .topic_filter import filter_papers
+from .topic_filter import filter_papers, shortlist_for_embedding, sort_screened_papers
 
 
 def normalize_path_patterns(patterns: list[str] | ListConfig | None, config_key: str) -> list[str] | None:
@@ -109,13 +109,29 @@ class Executor:
         logger.info(f"Total {len(all_papers)} papers retrieved from all sources")
         reranked_papers = []
         if len(all_papers) > 0:
-            logger.info("Reranking papers...")
-            reranked_papers = self.reranker.rerank(all_papers, corpus)
             screening = self.config.get("screening", {})
-            if screening.get("enabled", False):
-                reranked_papers = filter_papers(
-                    reranked_papers, self.openai_client, self.config.llm, screening
+            if screening.get("enabled", False) and screening.get("candidate_limit", 120) == 0:
+                logger.info("Screening all candidates before computing local embeddings")
+                screened = filter_papers(
+                    all_papers, self.openai_client, self.config.llm, screening
                 )
+                prefer_real = screening.get("prefer_real_robot", True)
+                finalists = shortlist_for_embedding(
+                    screened, self.config.executor.max_paper_num, prefer_real
+                )
+                logger.info("Computing Zotero similarity for {} final-tier candidates", len(finalists))
+                if finalists:
+                    reranked_papers = self.reranker.rerank(finalists, corpus)
+                    for p in reranked_papers:
+                        p.embedding_score = p.score
+                    reranked_papers = sort_screened_papers(reranked_papers, prefer_real)
+            else:
+                logger.info("Reranking papers...")
+                reranked_papers = self.reranker.rerank(all_papers, corpus)
+                if screening.get("enabled", False):
+                    reranked_papers = filter_papers(
+                        reranked_papers, self.openai_client, self.config.llm, screening
+                    )
             reranked_papers = reranked_papers[:self.config.executor.max_paper_num]
             if not reranked_papers and not self.config.executor.send_empty:
                 logger.info("No papers matched your research scope. No email will be sent.")

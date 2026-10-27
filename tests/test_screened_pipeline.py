@@ -11,7 +11,7 @@ def make_executor(papers, decisions):
     executor = Executor.__new__(Executor)
     executor.config = OmegaConf.create({
         "executor": {"source": ["arxiv"], "max_paper_num": 1, "send_empty": False},
-        "screening": {"enabled": True},
+        "screening": {"enabled": True, "candidate_limit": 0},
         "llm": {
             "api": {"base_url": "https://api.deepseek.com"},
             "generation_kwargs": {"model": "deepseek-flash"},
@@ -57,6 +57,26 @@ def test_all_rejected_stops_before_summary_or_email(monkeypatch):
     monkeypatch.setattr("zotero_arxiv_daily.executor.send_email", lambda cfg, body: emails.append(body))
     executor.run()
     assert emails == [] and enriched == []
+
+
+def test_global_screening_only_embeds_tiers_that_can_enter_the_digest(monkeypatch):
+    papers = [paper("excluded"), paper("lower tier"), paper("top hardware")]
+    executor, enriched = make_executor(papers, [
+        decision(0, excluded=True, relevance=5),
+        decision(1, relevance=3),
+        decision(2, relevance=5, real=True, evidence="evaluated on a physical robotic hand"),
+    ])
+    embedded = []
+    def rerank(selected, corpus):
+        embedded.extend(p.title for p in selected)
+        return selected
+    executor.reranker = SimpleNamespace(rerank=rerank)
+    monkeypatch.setattr(Paper, "generate_tldr", lambda *_: None)
+    monkeypatch.setattr(Paper, "generate_affiliations", lambda *_: None)
+    monkeypatch.setattr("zotero_arxiv_daily.executor.send_email", lambda *_: None)
+    executor.run()
+    assert embedded == ["top hardware"]
+    assert enriched == ["top hardware"]
 
 
 def test_arxiv_full_text_is_loaded_only_for_selected_papers(config, monkeypatch):

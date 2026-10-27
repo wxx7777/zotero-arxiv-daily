@@ -7,6 +7,7 @@ so an unscreened digest cannot masquerade as a successfully screened one.
 import json
 import math
 import re
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 from loguru import logger
@@ -146,27 +147,64 @@ def _judge_batch(papers, client, llm, options):
             })
 
 
+def sort_screened_papers(papers, prefer_real_robot=True):
+    return sorted(papers, key=lambda p: (
+        p.topic_relevance,
+        p.real_robot is True if prefer_real_robot else False,
+        p.embedding_score if p.embedding_score is not None else -math.inf,
+    ), reverse=True)
+
+
+def shortlist_for_embedding(papers, max_results, prefer_real_robot=True):
+    """Include the whole boundary tier so similarity can break every relevant tie."""
+    if max_results <= 0:
+        return []
+    ordered = sort_screened_papers(papers, prefer_real_robot)
+    if len(ordered) <= max_results:
+        return ordered
+    def priority(p):
+        return (p.topic_relevance, p.real_robot is True if prefer_real_robot else False)
+    cutoff = priority(ordered[max_results - 1])
+    return [p for p in ordered if priority(p) >= cutoff]
+
+
+def _screen_batches(candidates, client, llm, options, batch_size, workers):
+    # Submit at most one wave at a time. An error leaves no long queue of paid calls.
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for start in range(0, len(candidates), batch_size * workers):
+            batches = [
+                candidates[i:i + batch_size]
+                for i in range(start, min(start + batch_size * workers, len(candidates)), batch_size)
+            ]
+            futures = [pool.submit(_judge_batch, batch, client, llm, options) for batch in batches]
+            for batch, future in zip(batches, futures):
+                yield batch, future.result()
+
+
 def filter_papers(papers, client, llm, settings):
-    """Screen an embedding-sorted shortlist, retaining strong topic matches."""
+    """Screen every candidate, or an optional embedding-sorted shortlist."""
     options = _plain(settings)
     if not options.get("enabled", False):
         return papers
     candidate_limit = options.get("candidate_limit", 120)
     batch_size = options.get("batch_size", 8)
+    workers = options.get("workers", 1)
     min_relevance = options.get("min_relevance", 3)
     if type(candidate_limit) is not int or candidate_limit < 0:
         raise ValueError("screening.candidate_limit must be >=0 (0 means all)")
     if type(batch_size) is not int or not 1 <= batch_size <= 16:
         raise ValueError("screening.batch_size must be an integer from 1 to 16")
+    if type(workers) is not int or not 1 <= workers <= 4:
+        raise ValueError("screening.workers must be an integer from 1 to 4")
     if type(min_relevance) not in (int, float) or not math.isfinite(min_relevance) or not 0 <= min_relevance <= 5:
         raise ValueError("screening.min_relevance must be from 0 to 5")
     candidates = papers[:candidate_limit] if candidate_limit else papers
     logger.info("Topic screening: {} of {} candidates, minimum relevance {}/5",
                 len(candidates), len(papers), min_relevance)
     kept = []
-    for start in range(0, len(candidates), batch_size):
-        batch = candidates[start:start + batch_size]
-        for paper, decision in zip(batch, _judge_batch(batch, client, llm, options)):
+    reviewed = 0
+    for batch, decisions in _screen_batches(candidates, client, llm, options, batch_size, workers):
+        for paper, decision in zip(batch, decisions):
             if decision["excluded"] or decision["relevance"] < min_relevance or not decision["topics"]:
                 continue
             paper.embedding_score = paper.score
@@ -177,10 +215,8 @@ def filter_papers(papers, client, llm, settings):
             paper.recommendation_reason = decision["reason"][:500]
             # Keep the original embedding score for ties and backward-compatible emails.
             kept.append(paper)
-    kept.sort(key=lambda p: (
-        p.topic_relevance,
-        p.real_robot is True if options.get("prefer_real_robot", True) else False,
-        p.embedding_score if p.embedding_score is not None else -math.inf,
-    ), reverse=True)
+        reviewed += len(batch)
+        logger.info("Topic screening reviewed {}/{}; kept {} so far", reviewed, len(candidates), len(kept))
+    kept = sort_screened_papers(kept, options.get("prefer_real_robot", True))
     logger.info("Topic screening kept {} of {} reviewed candidates", len(kept), len(candidates))
     return kept

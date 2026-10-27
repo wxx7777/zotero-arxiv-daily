@@ -50,6 +50,7 @@ screening:
   enabled: false
   candidate_limit: 120 # Embedding top-N to review; 0 means all candidates.
   batch_size: 8
+  workers: 1 # Concurrent LLM batches, from 1 to 4.
   min_relevance: 3 # Topic relevance from 0 to 5; low matches are not padded in.
   prefer_real_robot: true # Within the same topic relevance tier.
 
