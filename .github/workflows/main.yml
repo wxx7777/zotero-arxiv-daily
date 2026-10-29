@@ -1,6 +1,11 @@
 name: Send emails daily
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: Resend even if a delivery receipt exists today
+        type: boolean
+        default: false
   schedule:
     - cron: '0 2 * * *' # 10:00 Asia/Shanghai (UTC+8)
     - cron: '17,37 2 * * *' # Retry missed/failed runs at 10:17 and 10:37
@@ -16,6 +21,7 @@ concurrency:
 jobs:
   check-schedule:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       should_run: ${{ steps.gate.outputs.should_run }}
     steps:
@@ -26,18 +32,18 @@ jobs:
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
+          FORCE_RESEND: ${{ inputs.force }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
-            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/main.yml/runs?status=success&per_page=100" > "$RUNNER_TEMP/digest-runs.json"
-          else
-            printf '{"workflow_runs": []}' > "$RUNNER_TEMP/digest-runs.json"
-          fi
-          python tools/daily_schedule_gate.py < "$RUNNER_TEMP/digest-runs.json"
+          digest_date=$(TZ=Asia/Shanghai date +%F)
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=digest-sent-$digest_date&per_page=100" > "$RUNNER_TEMP/digest-artifacts.json"
+          python tools/daily_schedule_gate.py < "$RUNNER_TEMP/digest-artifacts.json"
 
   calculate-and-send:
     needs: check-schedule
     if: needs.check-schedule.outputs.should_run == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -49,7 +55,9 @@ jobs:
         uses: astral-sh/setup-uv@v7
 
       - name: Run script
+        id: send
         env:
+          DIGEST_RECEIPT_PATH: ${{ runner.temp }}/digest-receipt.json
           ZOTERO_ID: ${{ secrets.ZOTERO_ID }}
           ZOTERO_KEY: ${{ secrets.ZOTERO_KEY }}
           SENDER: ${{ secrets.SENDER }}
@@ -60,6 +68,17 @@ jobs:
           CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
         run: |
           printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
-          echo "Use custom config: "
-          cat config/custom.yaml
           uv run src/zotero_arxiv_daily/main.py
+
+      - name: Store successful delivery receipt
+        if: always() && steps.send.outputs.delivery_date != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-sent-${{ steps.send.outputs.delivery_date }}
+          path: ${{ runner.temp }}/digest-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Require a delivery receipt
+        if: success()
+        run: test -s "$RUNNER_TEMP/digest-receipt.json"

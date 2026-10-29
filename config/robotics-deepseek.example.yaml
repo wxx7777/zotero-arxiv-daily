@@ -61,5 +61,5 @@ executor:
   source: ["arxiv"]
   reranker: local
   max_paper_num: 10
-  send_empty: false
+  send_empty: true
   debug: ${oc.decode:${oc.env:DEBUG,false}}

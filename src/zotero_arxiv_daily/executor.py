@@ -12,6 +12,7 @@ from .utils import send_email
 from openai import OpenAI
 from tqdm import tqdm
 from .topic_filter import filter_papers, shortlist_for_embedding, sort_screened_papers
+from .delivery import record_delivery
 
 
 def normalize_path_patterns(patterns: list[str] | ListConfig | None, config_key: str) -> list[str] | None:
@@ -95,8 +96,7 @@ class Executor:
         corpus = self.fetch_zotero_corpus()
         corpus = self.filter_corpus(corpus)
         if len(corpus) == 0:
-            logger.error(f"No zotero papers found. Please check your zotero settings:\n{self.config.zotero}")
-            return
+            raise RuntimeError("No Zotero papers found in the configured collections.")
         all_papers = []
         for source, retriever in self.retrievers.items():
             logger.info(f"Retrieving {source} papers...")
@@ -147,4 +147,5 @@ class Executor:
         logger.info("Sending email...")
         email_content = render_email(reranked_papers)
         send_email(self.config, email_content)
+        record_delivery(len(reranked_papers))
         logger.info("Email sent successfully")

@@ -1,0 +1,48 @@
+{
+  "job": {
+    "title": "Zotero arXiv daily - China 10 AM",
+    "enabled": false,
+    "url": "https://api.github.com/repos/wxx7777/zotero-arxiv-daily/actions/workflows/main.yml/dispatches",
+    "saveResponses": true,
+    "requestMethod": 1,
+    "requestTimeout": 30,
+    "schedule": {
+      "timezone": "Asia/Shanghai",
+      "expiresAt": 0,
+      "hours": [
+        10,
+        11
+      ],
+      "minutes": [
+        0,
+        20,
+        40
+      ],
+      "mdays": [
+        -1
+      ],
+      "months": [
+        -1
+      ],
+      "wdays": [
+        -1
+      ]
+    },
+    "notification": {
+      "onFailure": true,
+      "onFailureCount": 1,
+      "onSuccess": true,
+      "onDisable": true
+    },
+    "extendedData": {
+      "headers": {
+        "Authorization": "Bearer REPLACE_WITH_REPOSITORY_SCOPED_GITHUB_TOKEN",
+        "Accept": "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "X-GitHub-Api-Version": "2026-03-10",
+        "User-Agent": "zotero-arxiv-daily-scheduler"
+      },
+      "body": "{\"ref\": \"main\", \"inputs\": {\"force\": false}}"
+    }
+  }
+}
